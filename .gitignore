@@ -1,7 +1,5 @@
 # Build directories
-/build/
-build/
-build-*/
+build*/
 out/
 
 # CMake artifacts
@@ -10,6 +8,7 @@ CMakeFiles/
 cmake_install.cmake
 CTestTestfile.cmake
 *.cmake.stamp
+CMakeUserPresets.json
 
 # Compiled output
 *.o
@@ -24,6 +23,8 @@ anomaly-spotter-windows-x64.zip
 # Editors / IDEs
 .idea/
 .vscode/
+.cache/
+compile_commands.json
 *.user
 
 # OS noise
