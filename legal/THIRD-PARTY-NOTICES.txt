@@ -1,0 +1,38 @@
+AnomalySpotter — third-party software notices
+
+AnomalySpotter itself is licensed under the MIT License (see LICENSE.txt).
+This distribution additionally bundles the following third-party components.
+Their full license texts are in the licenses/ folder.
+
+1. Qt Toolkit
+   (Qt6Core.dll, Qt6Gui.dll, Qt6Widgets.dll, Qt6Multimedia.dll, Qt6Network.dll
+   and the Qt plugins in platforms/, styles/, multimedia/, tls/,
+   networkinformation/)
+   Copyright (C) The Qt Company Ltd. and other contributors.
+   Licensed under the GNU Lesser General Public License version 3
+   (licenses/LGPL-3.0.txt, which incorporates licenses/GPL-3.0.txt).
+   Source code: https://download.qt.io/official_releases/qt/ and
+   https://code.qt.io
+   The Qt libraries are dynamically linked: you may replace the DLLs with your
+   own builds of the same Qt version.
+
+2. FFmpeg
+   (avcodec, avformat, avutil, swresample, swscale DLLs)
+   Copyright (c) the FFmpeg developers.
+   Licensed under the GNU Lesser General Public License version 2.1 or later
+   (licenses/LGPL-2.1.txt). This build contains no GPL-licensed components.
+   Source code: https://ffmpeg.org/download.html (the bundled DLLs are the
+   FFmpeg build shipped with the official Qt binary packages).
+   The FFmpeg libraries are dynamically linked and may likewise be replaced.
+
+3. LLVM runtime libraries from llvm-mingw
+   (libc++.dll, libunwind.dll)
+   Part of the LLVM Project, https://llvm.org, built with llvm-mingw,
+   https://github.com/mstorsjo/llvm-mingw.
+   Licensed under the Apache License v2.0 with LLVM Exceptions
+   (licenses/LLVM-Apache-2.0-with-exceptions.txt).
+
+4. mingw-w64 runtime
+   (statically linked CRT startup/import pieces, https://www.mingw-w64.org)
+   Distributed under permissive licenses (Zope Public License, public domain
+   and similar) that require no further action for binary redistribution.

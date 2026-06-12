@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AnomalySpotter
+GenericName=Anomaly Trainer
+Comment=Anomaly-spotting practice tool for Observation Duty-style games
+Exec=anomaly-spotter
+Icon=anomaly-spotter
+Terminal=false
+Categories=Utility;Game;

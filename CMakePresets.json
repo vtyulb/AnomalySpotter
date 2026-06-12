@@ -1,0 +1,36 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "windows",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-win",
+      "toolchainFile": "${sourceDir}/cmake/llvm-mingw-toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": "OFF",
+        "CMAKE_PREFIX_PATH": "$env{HOME}/.qt-cross",
+        "QT_HOST_PATH": "/usr",
+        "CMAKE_DISABLE_FIND_PACKAGE_WrapVulkanHeaders": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "windows",
+      "configurePreset": "windows"
+    }
+  ]
+}
