@@ -2,6 +2,8 @@
 
 Anomaly-hunting helper for *Observation Duty*-style camera games. Built first for **Dead Signal**, but it compares screenshots instead of reading game memory, so it works with any game of the genre. It memorizes room/camera snapshots and every 200 ms shows how much the current screen differs from each of them; press F6 to highlight the differences on top of the game.
 
+▶ **[Demo on YouTube](https://www.youtube.com/watch?v=g-LP0PGvYVo)**
+
 ![Difference overlay highlighting anomalies on top of the game](screenshots/Screenshot%20%2814%29.png)
 
 ![Main window with room snapshots and live difference percentages](screenshots/window.png)
