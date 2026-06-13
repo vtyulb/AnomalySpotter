@@ -5,9 +5,11 @@
 #include "OverlayWindow.h"
 #include "ScreenCaptureService.h"
 
+#include <QColor>
 #include <QImage>
 #include <QList>
 #include <QMainWindow>
+#include <QRegion>
 #include <QTimer>
 
 class QCheckBox;
@@ -52,15 +54,18 @@ private slots:
     void removeLastSnapshot();
     void onGlobalShortcutsBound();
     void openShortcutSettings();
+    void chooseHighlightColor();
     void openConfigFile();
     void pollAutomation();
 
 private:
     void buildUi();
     QScreen *selectedScreen() const;
-    int bestMatchIndex(const QImage &compareScaled, double *bestPercent) const;
+    int bestMatchIndex(const QImage &compareScaled, const QSize &frameSize,
+                       double *bestPercent) const;
     QScreen *screenForFrame(const QSize &frameSize) const;
-    QRect hudExclusion(const QSize &size) const;
+    QRect hudExclusion(const QSize &targetSize, const QSize &frameSize) const;
+    QRegion excludedRegion(const QSize &targetSize, const QSize &frameSize) const;
     void removeSnapshotAt(int row);
     void runAutomationCommand(const QString &command);
     void dumpAutomationState();
@@ -76,6 +81,7 @@ private:
     int bestIndex_ = -1;
     bool globalHotkeysBound_ = false;
     OverlayMode overlayMode_ = OverlayMode::Toggle;
+    QColor highlightColor_ = QColor(255, 40, 40);
     QTimer overlayBlinkTimer_;
     bool overlayActive_ = false;
     int snapshotFKey_ = 5;
@@ -95,6 +101,10 @@ private:
     QLabel *previewLabel_ = nullptr;
     QSlider *thresholdSlider_ = nullptr;
     QLabel *thresholdValueLabel_ = nullptr;
+    QSlider *hudSizeSlider_ = nullptr;
+    QSlider *ignoreTopSlider_ = nullptr;
+    QSlider *ignoreBottomSlider_ = nullptr;
+    QPushButton *colorButton_ = nullptr;
     QTableWidget *snapshotTable_ = nullptr;
     QShortcut *localSnapshotShortcut_ = nullptr;
 };

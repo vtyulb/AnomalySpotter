@@ -21,12 +21,13 @@ OverlayWindow::OverlayWindow()
 
 void OverlayWindow::showDiff(const QImage &mask, const QList<QRect> &regions, QScreen *screen,
                              double percent, const QString &referenceName,
-                             const QString &hideHint) {
+                             const QString &hideHint, const QColor &highlightColor) {
     mask_ = mask;
     regions_ = regions;
     percent_ = percent;
     referenceName_ = referenceName;
     hideHint_ = hideHint;
+    highlightColor_ = highlightColor;
     highlightVisible_ = true;
 
     winId();
@@ -75,7 +76,7 @@ void OverlayWindow::paintEvent(QPaintEvent *) {
 
         const qreal scaleX = static_cast<qreal>(width()) / mask_.width();
         const qreal scaleY = static_cast<qreal>(height()) / mask_.height();
-        painter.setPen(QPen(QColor(255, 70, 70), 3));
+        painter.setPen(QPen(highlightColor_.lighter(120), 3));
         painter.setBrush(Qt::NoBrush);
         for (const QRect &region : regions_) {
             painter.drawRect(QRectF(region.x() * scaleX, region.y() * scaleY,

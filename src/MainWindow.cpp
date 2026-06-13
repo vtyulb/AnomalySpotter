@@ -4,12 +4,14 @@
 
 #include <QCheckBox>
 #include <QCloseEvent>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QFile>
 #include <QFont>
 #include <QSettings>
 #include <QGuiApplication>
+#include <QtMath>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -39,14 +41,32 @@ constexpr int kCompareIntervalMs = 200;
 constexpr int kOverlaySettleMs = 350;
 constexpr int kBlinkIntervalMs = 100;
 
+void applyColorSwatch(QPushButton *button, const QColor &color) {
+    const QString textColor = color.lightness() > 127 ? QStringLiteral("#000000")
+                                                       : QStringLiteral("#ffffff");
+    button->setText(color.name());
+    button->setStyleSheet(
+        QStringLiteral("background-color: %1; color: %2;").arg(color.name(), textColor));
+}
+
 }
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     buildUi();
 
     QSettings settings;
-    thresholdSlider_->setValue(settings.value(QStringLiteral("threshold"), 25).toInt());
+    thresholdSlider_->setValue(settings.value(QStringLiteral("threshold"), 10).toInt());
     hudCheck_->setChecked(settings.value(QStringLiteral("hudEnabled"), true).toBool());
+    hudSizeSlider_->setValue(qBound(50, settings.value(QStringLiteral("hudSize"), 100).toInt(), 200));
+    hud_.setScalePercent(hudSizeSlider_->value());
+    ignoreTopSlider_->setValue(qBound(0, settings.value(QStringLiteral("ignoreTop"), 35).toInt(), 100));
+    ignoreBottomSlider_->setValue(
+        qBound(0, settings.value(QStringLiteral("ignoreBottom"), 0).toInt(), 100));
+    highlightColor_ = QColor(settings.value(QStringLiteral("highlightColor"),
+                                            QStringLiteral("#ff2828")).toString());
+    if (!highlightColor_.isValid())
+        highlightColor_ = QColor(255, 40, 40);
+    applyColorSwatch(colorButton_, highlightColor_);
     const int storedMode = qBound(0, settings.value(QStringLiteral("overlayMode"), 0).toInt(),
                                   overlayModeBox_->count() - 1);
     overlayModeBox_->setCurrentIndex(storedMode);
@@ -188,10 +208,10 @@ void MainWindow::buildUi() {
     auto *thresholdRow = new QHBoxLayout;
     thresholdRow->addWidget(new QLabel(QStringLiteral("Sensitivity threshold:"), central));
     thresholdSlider_ = new QSlider(Qt::Horizontal, central);
-    thresholdSlider_->setRange(5, 80);
-    thresholdSlider_->setValue(25);
+    thresholdSlider_->setRange(5, 50);
+    thresholdSlider_->setValue(10);
     thresholdRow->addWidget(thresholdSlider_, 1);
-    thresholdValueLabel_ = new QLabel(QStringLiteral("25"), central);
+    thresholdValueLabel_ = new QLabel(QStringLiteral("10"), central);
     connect(thresholdSlider_, &QSlider::valueChanged, thresholdValueLabel_,
             qOverload<int>(&QLabel::setNum));
     thresholdRow->addWidget(thresholdValueLabel_);
@@ -204,6 +224,43 @@ void MainWindow::buildUi() {
             hud_.hide();
     });
     layout->addWidget(hudCheck_);
+
+    auto *hudSizeRow = new QHBoxLayout;
+    hudSizeRow->addWidget(new QLabel(QStringLiteral("HUD size:"), central));
+    hudSizeSlider_ = new QSlider(Qt::Horizontal, central);
+    hudSizeSlider_->setRange(50, 200);
+    hudSizeSlider_->setValue(100);
+    hudSizeRow->addWidget(hudSizeSlider_, 1);
+    auto *hudSizeValueLabel = new QLabel(QStringLiteral("100%"), central);
+    connect(hudSizeSlider_, &QSlider::valueChanged, this, [this, hudSizeValueLabel](int value) {
+        hudSizeValueLabel->setText(QStringLiteral("%1%").arg(value));
+        hud_.setScalePercent(value);
+    });
+    hudSizeRow->addWidget(hudSizeValueLabel);
+    layout->addLayout(hudSizeRow);
+
+    auto addIgnoreBandRow = [this, central, layout](const QString &label, QSlider *&slider) {
+        auto *row = new QHBoxLayout;
+        row->addWidget(new QLabel(label, central));
+        slider = new QSlider(Qt::Horizontal, central);
+        slider->setRange(0, 100);
+        slider->setValue(0);
+        row->addWidget(slider, 1);
+        auto *valueLabel = new QLabel(QStringLiteral("0 px"), central);
+        connect(slider, &QSlider::valueChanged, valueLabel,
+                [valueLabel](int value) { valueLabel->setText(QStringLiteral("%1 px").arg(value)); });
+        row->addWidget(valueLabel);
+        layout->addLayout(row);
+    };
+    addIgnoreBandRow(QStringLiteral("Ignore top pixels:"), ignoreTopSlider_);
+    addIgnoreBandRow(QStringLiteral("Ignore bottom pixels:"), ignoreBottomSlider_);
+
+    auto *colorRow = new QHBoxLayout;
+    colorRow->addWidget(new QLabel(QStringLiteral("Difference color:"), central));
+    colorButton_ = new QPushButton(central);
+    connect(colorButton_, &QPushButton::clicked, this, &MainWindow::chooseHighlightColor);
+    colorRow->addWidget(colorButton_, 1);
+    layout->addLayout(colorRow);
 
     auto *overlayModeRow = new QHBoxLayout;
     overlayModeRow->addWidget(new QLabel(QStringLiteral("Overlay key mode:"), central));
@@ -312,7 +369,7 @@ void MainWindow::updateComparisons() {
 
     const QImage compareScaled =
         frame.scaled(kCompareSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    const QRect exclude = hudExclusion(compareScaled.size());
+    const QRegion exclude = excludedRegion(compareScaled.size(), frame.size());
     int bestIndex = -1;
     double bestPercent = 0.0;
     lastPercents_.clear();
@@ -342,8 +399,9 @@ void MainWindow::updateComparisons() {
     }
 }
 
-int MainWindow::bestMatchIndex(const QImage &compareScaled, double *bestPercent) const {
-    const QRect exclude = hudExclusion(compareScaled.size());
+int MainWindow::bestMatchIndex(const QImage &compareScaled, const QSize &frameSize,
+                               double *bestPercent) const {
+    const QRegion exclude = excludedRegion(compareScaled.size(), frameSize);
     int bestIndex = -1;
     double best = 0.0;
     for (int i = 0; i < snapshots_.size(); ++i) {
@@ -375,12 +433,45 @@ QScreen *MainWindow::screenForFrame(const QSize &frameSize) const {
     return selected;
 }
 
-QRect MainWindow::hudExclusion(const QSize &size) const {
+QRect MainWindow::hudExclusion(const QSize &targetSize, const QSize &frameSize) const {
     if (!hud_.isVisible())
         return {};
-    const int width = size.width() * 12 / 100;
-    const int height = size.height() * 8 / 100;
-    return QRect(size.width() - width, 0, width, height);
+    QScreen *screen = screenForFrame(frameSize);
+    const QSizeF screenLogical = screen ? QSizeF(screen->geometry().size()) : QSizeF(frameSize);
+    if (screenLogical.width() <= 0 || screenLogical.height() <= 0)
+        return {};
+    constexpr int hudMargin = 16;
+    constexpr int safetyPad = 6;
+    const double fracW = (hud_.width() + hudMargin + safetyPad) / screenLogical.width();
+    const double fracH = (hud_.height() + hudMargin + safetyPad) / screenLogical.height();
+    const int width = qMin(targetSize.width(), qCeil(targetSize.width() * fracW));
+    const int height = qMin(targetSize.height(), qCeil(targetSize.height() * fracH));
+    return QRect(targetSize.width() - width, 0, width, height);
+}
+
+QRegion MainWindow::excludedRegion(const QSize &targetSize, const QSize &frameSize) const {
+    QRegion region;
+    const QRect hud = hudExclusion(targetSize, frameSize);
+    if (!hud.isEmpty())
+        region += hud;
+
+    QScreen *screen = screenForFrame(frameSize);
+    const double screenHeight = screen ? screen->geometry().height() : frameSize.height();
+    if (screenHeight > 0) {
+        const int topPixels = ignoreTopSlider_->value();
+        if (topPixels > 0) {
+            const int band = qMin(targetSize.height(),
+                                  qCeil(targetSize.height() * topPixels / screenHeight));
+            region += QRect(0, 0, targetSize.width(), band);
+        }
+        const int bottomPixels = ignoreBottomSlider_->value();
+        if (bottomPixels > 0) {
+            const int band = qMin(targetSize.height(),
+                                  qCeil(targetSize.height() * bottomPixels / screenHeight));
+            region += QRect(0, targetSize.height() - band, targetSize.width(), band);
+        }
+    }
+    return region;
 }
 
 void MainWindow::saveSnapshot() {
@@ -423,14 +514,15 @@ void MainWindow::showOverlay() {
 
     const QImage compareScaled =
         frame.scaled(kCompareSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    const int index = bestMatchIndex(compareScaled, nullptr);
+    const int index = bestMatchIndex(compareScaled, frame.size(), nullptr);
     QImage reference = snapshots_[index].full;
     if (reference.size() != frame.size())
         reference = reference.scaled(frame.size(), Qt::IgnoreAspectRatio,
                                      Qt::SmoothTransformation);
 
     const DiffEngine::Analysis analysis = DiffEngine::analyze(
-        frame, reference, thresholdSlider_->value(), hudExclusion(frame.size()));
+        frame, reference, thresholdSlider_->value(), excludedRegion(frame.size(), frame.size()),
+        highlightColor_);
     QString hideHint;
     switch (overlayMode_) {
     case OverlayMode::Toggle:
@@ -444,7 +536,7 @@ void MainWindow::showOverlay() {
         break;
     }
     overlay_.showDiff(analysis.mask, analysis.regions, screenForFrame(frame.size()),
-                      analysis.percent, snapshots_[index].name, hideHint);
+                      analysis.percent, snapshots_[index].name, hideHint, highlightColor_);
     statusBar()->showMessage(
         QStringLiteral("Overlay shown, comparison paused"), 5000);
 }
@@ -518,6 +610,10 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     settings.setValue(QStringLiteral("threshold"), thresholdSlider_->value());
     settings.setValue(QStringLiteral("screenIndex"), screenBox_->currentIndex());
     settings.setValue(QStringLiteral("hudEnabled"), hudCheck_->isChecked());
+    settings.setValue(QStringLiteral("hudSize"), hudSizeSlider_->value());
+    settings.setValue(QStringLiteral("ignoreTop"), ignoreTopSlider_->value());
+    settings.setValue(QStringLiteral("ignoreBottom"), ignoreBottomSlider_->value());
+    settings.setValue(QStringLiteral("highlightColor"), highlightColor_.name());
     settings.setValue(QStringLiteral("overlayMode"), overlayModeBox_->currentIndex());
     settings.setValue(QStringLiteral("geometry"), saveGeometry());
     overlay_.close();
@@ -550,6 +646,15 @@ void MainWindow::openShortcutSettings() {
     }
     statusBar()->showMessage(
         QStringLiteral("No shortcuts-settings app found — set the keys in your compositor"), 5000);
+}
+
+void MainWindow::chooseHighlightColor() {
+    const QColor chosen =
+        QColorDialog::getColor(highlightColor_, this, QStringLiteral("Difference highlight color"));
+    if (!chosen.isValid())
+        return;
+    highlightColor_ = chosen;
+    applyColorSwatch(colorButton_, highlightColor_);
 }
 
 void MainWindow::openConfigFile() {

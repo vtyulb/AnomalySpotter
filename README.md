@@ -8,80 +8,11 @@ Anomaly-hunting helper for *Observation Duty*-style camera games. Built first fo
 
 ## Platforms
 
-Developed and used on **Arch Linux / KDE Wayland**; also runs on **Windows**. X11 should work
-as well, just untested.
-The Windows build is cross-compiled from Linux and smoke-tested under wine (it launches, renders
-its window and finds all its DLLs/plugins); the screen capture itself is only verifiable on real
-Windows, so run the game in **borderless windowed** mode and check the first F5 snapshot there.
+Developed and used on **Arch Linux / KDE Wayland**; also runs on **Windows** (X11 should work as
+well, just untested). On Windows run the game in **borderless windowed** mode — the overlay cannot
+draw above an exclusive-fullscreen game.
 
-## Building
-
-### Linux
-
-Needs Qt 6 (Widgets + Multimedia), plus optionally layer-shell-qt for the overlay above
-fullscreen windows on Wayland. On Arch:
-
-```bash
-sudo pacman -S cmake ninja gcc qt6-base qt6-multimedia layer-shell-qt
-cmake --preset release && cmake --build --preset release
-./build/anomaly-spotter
-```
-
-The hotkey backend is picked automatically: the Wayland portal (`GlobalShortcuts` over DBus),
-or X11 (`XGrabKey` — should work as well, just untested).
-On Wayland the shortcuts need **xdg-desktop-portal >= 1.20** (its host app `Registry` is how the
-app identifies itself, see *Wayland app identity* below); on older portals they may get filed
-under the terminal the app was started from.
-
-### Windows (native)
-
-Install Qt 6 (online installer) with the **Multimedia** module and an MSVC or MinGW kit, then:
-
-```bat
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:/Qt/6.11.1/msvc2022_64
-cmake --build build --config Release
-windeployqt build\Release\anomaly-spotter.exe
-```
-
-`windeployqt` gathers the Qt DLLs and plugins next to the exe so it can be zipped and shipped.
-
-### Windows ZIP, cross-built from Linux
-
-This produces a self-contained `anomaly-spotter-windows-x64.zip` that runs on a clean Windows
-machine. The toolchain and the target Qt must use the **same** UCRT llvm-mingw — Arch's MSVCRT
-`mingw-w64-gcc` is ABI-incompatible with the official UCRT Qt, so use llvm-mingw instead.
-
-Prerequisites:
-- `llvm-mingw` **20231128** (the exact build Qt 6.11.1 `win64_llvm_mingw` was made with), the
-  Linux-hosted tarball from github.com/mstorsjo/llvm-mingw — newer llvm-mingw has libc++ header
-  bugs and mismatched ABI.
-- Qt 6.11.1 `win64_llvm_mingw` (qtbase + qtmultimedia) extracted into a prefix, e.g. `~/.qt-cross`.
-  The FFmpeg DLLs and the multimedia/platform plugins must be present in it.
-- A host Qt 6.11.1 (system `/usr`) for the build tools (moc/rcc) via `QT_HOST_PATH`.
-
-```bash
-export LLVM_MINGW_ROOT=$HOME/toolchains/llvm-mingw-2023
-cmake --preset windows && cmake --build --preset windows
-tools/package-windows.sh build-win "$HOME/.qt-cross" anomaly-spotter-windows-x64.zip
-```
-
-The Qt prefix (`~/.qt-cross`), `QT_HOST_PATH` and the toolchain file are wired into the
-`windows` preset in `CMakePresets.json` — edit it there if your paths differ.
-
-`package-windows.sh` stages the exe, the Qt/FFmpeg/runtime DLLs and the needed plugins
-(`platforms`, `styles`, `multimedia`, `tls`, `networkinformation`) with a `qt.conf`, plus the
-license paperwork (`LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and the LGPL/LLVM license texts
-from `legal/` — required for redistributing the Qt and FFmpeg DLLs), and zips them.
-The result was smoke-tested under wine (launches, renders, finds all DLLs/plugins); the screen
-capture itself can only be verified on real Windows.
-
-### Tests
-
-Headless (offscreen platform, no X11/Wayland needed) — run locally or in CI, see `.gitlab-ci.yml`:
-
-```bash
-ctest --test-dir build --output-on-failure
-```
+Grab the Windows build from the releases, or build from source — see [build.md](build.md).
 
 ## Usage
 
@@ -96,7 +27,7 @@ ctest --test-dir build --output-on-failure
 
    The "Differences" button toggles the overlay with a click in any mode. The mode handling is shared code, so Linux and Windows behave identically.
 6. Use the "Delete last" / "Delete selected" buttons to drop a snapshot taken by mistake. "Delete last" also has an optional global hotkey: it is unbound by default — on Wayland assign it in the desktop's keyboard-shortcuts settings ("Delete last snapshot" under AnomalySpotter), on Windows set `deleteLastKey` in the config.
-7. The sensitivity threshold suppresses noise from the video codec, the cursor, and small animations.
+7. The sensitivity threshold suppresses noise from the video codec, the cursor, and small animations. "HUD size" scales the on-screen percentage indicator. "Ignore top pixels" / "Ignore bottom pixels" (0–100) drop horizontal strips at the top and bottom of the screen from the comparison, so a fixed clock, taskbar, or game UI bar there never counts as a difference. "Difference color" picks the highlight color used by the F6 overlay (red by default).
 
 ### Changing the hotkeys
 
@@ -106,59 +37,14 @@ because on Wayland the compositor owns the global-shortcut binding, not the app:
 - **Wayland:** the global shortcuts are registered with the compositor on first run (approve the
   portal prompt). Rebind them in the desktop's keyboard-shortcuts settings — the in-window
   **"Open shortcut settings…"** button opens it (KDE `systemsettings kcm_keys`, GNOME control
-  center). They are listed under the app id **`anomaly-spotter`** (shown as **AnomalySpotter**),
-  regardless of how the app was started — see *Wayland app identity* below. The buttons in the
-  window show whatever is actually bound (the compositor may pick different keys if F5/F6 are taken).
+  center). They are listed under **AnomalySpotter**, regardless of how the app was started. The
+  buttons in the window show whatever is actually bound (the compositor may pick different keys if
+  F5/F6 are taken).
 - **Windows:** set `snapshotKey` / `overlayKey` / `deleteLastKey` (a function-key number,
   1–12; `deleteLastKey` 0 = disabled, the default) in
   `%APPDATA%\anomaly-spotter\anomaly-spotter.ini` — the in-window **"Edit config…"** button
   opens it in your editor — and relaunch. The same keys in
   `~/.config/anomaly-spotter/anomaly-spotter.conf` apply to the X11 backend.
-
-### Wayland app identity
-
-By default `xdg-desktop-portal` derives an app's identity (and thus where its global shortcuts
-are filed) from the systemd scope the process runs in. A binary started straight from a terminal
-inherits the terminal's scope, so its shortcuts would be attributed to the terminal (e.g.
-polluting `org.kde.yakuake` in `kglobalshortcutsrc`).
-
-The app instead registers itself explicitly via the host app Registry
-(`org.freedesktop.host.portal.Registry.Register`, **xdg-desktop-portal >= 1.20**). Two things
-make that call work:
-
-- Registration is per D-Bus connection and must be the *first* portal call on it, but Qt already
-  talks to the Settings portal on the shared session-bus connection during startup. So the hotkey
-  code opens its own private bus connection, registers `anomaly-spotter` there, and runs the whole
-  `GlobalShortcuts` session over it.
-- The registered app id must match the basename of an existing `.desktop` file, so on Wayland
-  start the app writes `~/.local/share/applications/anomaly-spotter.desktop` (pointing `Exec` at
-  its own binary; skipped under `AS_CONTROL_FILE`, and a packaged install ships the same file
-  anyway).
-
-With that, the shortcuts land under **AnomalySpotter** no matter how the binary was launched. On
-portals older than 1.20 the `Register` call fails harmlessly and identification falls back to the
-systemd scope of whatever launched the app.
-
-## Development and headless testing
-
-`test-scene` is a controllable fake room: it shows a window, switches scenes from a control file, and publishes its frame to a PNG.
-
-```bash
-./build/test-scene /tmp/scene.txt /tmp/frame.png
-echo 1 > /tmp/scene.txt
-```
-
-The trainer supports two environment hooks for automated testing:
-
-- `AS_FAKE_CAPTURE_FILE=<png>` — read frames from a PNG instead of real screen capture (no portal dialogs).
-- `AS_CONTROL_FILE=<file>` — poll the file for commands (`capture-on`, `capture-off`, `snapshot`, `overlay`, `delete-last`), one per line; the file is truncated after reading. Current state is dumped as JSON to `<file>.state`. Global hotkey registration is skipped in this mode.
-
-```bash
-AS_FAKE_CAPTURE_FILE=/tmp/frame.png AS_CONTROL_FILE=/tmp/ctl ./build/anomaly-spotter
-echo capture-on >> /tmp/ctl
-echo snapshot >> /tmp/ctl
-cat /tmp/ctl.state
-```
 
 ## Notes
 
@@ -168,6 +54,11 @@ cat /tmp/ctl.state
 - The HUD and the diff overlay appear on the screen that is actually being captured: it is detected by matching the frame size against screen resolutions, with the screen selected in the UI as a fallback.
 - On Wayland the buttons show the hotkeys actually bound by the portal (KDE may assign different keys if F5/F6 are taken) and update live when the keys are rebound in the system settings.
 - On Windows the overlay cannot draw above exclusive-fullscreen games — run the game in borderless/windowed mode.
+
+## Building
+
+See [build.md](build.md) for build instructions (Linux, Windows, the cross-compiled Windows ZIP),
+tests, and notes on how the app declares its identity to the Wayland portal.
 
 ## License
 

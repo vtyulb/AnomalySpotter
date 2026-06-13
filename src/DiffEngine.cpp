@@ -14,32 +14,38 @@ bool pixelDiffers(QRgb a, QRgb b, int threshold) {
         || qAbs(qBlue(a) - qBlue(b)) > threshold;
 }
 
+qint64 regionArea(const QRegion &region) {
+    qint64 area = 0;
+    for (const QRect &rect : region)
+        area += static_cast<qint64>(rect.width()) * rect.height();
+    return area;
+}
+
 }
 
 namespace DiffEngine {
 
-double diffPercent(const QImage &a, const QImage &b, int threshold, const QRect &exclude) {
+double diffPercent(const QImage &a, const QImage &b, int threshold, const QRegion &exclude) {
     if (a.isNull() || a.size() != b.size())
         return 100.0;
-    const QRect excluded = exclude.intersected(a.rect());
+    const QRegion excluded = exclude.intersected(a.rect());
     qint64 differing = 0;
     for (int y = 0; y < a.height(); ++y) {
         const QRgb *rowA = reinterpret_cast<const QRgb *>(a.constScanLine(y));
         const QRgb *rowB = reinterpret_cast<const QRgb *>(b.constScanLine(y));
         for (int x = 0; x < a.width(); ++x) {
-            if (excluded.contains(x, y))
+            if (excluded.contains(QPoint(x, y)))
                 continue;
             if (pixelDiffers(rowA[x], rowB[x], threshold))
                 ++differing;
         }
     }
-    const qint64 total = static_cast<qint64>(a.width()) * a.height()
-        - static_cast<qint64>(excluded.width()) * excluded.height();
+    const qint64 total = static_cast<qint64>(a.width()) * a.height() - regionArea(excluded);
     return total > 0 ? 100.0 * differing / total : 0.0;
 }
 
 Analysis analyze(const QImage &current, const QImage &reference, int threshold,
-                 const QRect &exclude) {
+                 const QRegion &exclude, const QColor &highlightColor) {
     Analysis analysis;
     analysis.mask = QImage(current.size(), QImage::Format_ARGB32);
     analysis.mask.fill(Qt::transparent);
@@ -48,11 +54,12 @@ Analysis analyze(const QImage &current, const QImage &reference, int threshold,
         return analysis;
     }
 
-    const QRect excluded = exclude.intersected(current.rect());
+    const QRegion excluded = exclude.intersected(current.rect());
     const int cellColumns = (current.width() + kCellSize - 1) / kCellSize;
     const int cellRows = (current.height() + kCellSize - 1) / kCellSize;
     QVector<int> cellCounts(cellColumns * cellRows, 0);
-    const QRgb highlight = qRgba(255, 40, 40, 160);
+    const QRgb highlight =
+        qRgba(highlightColor.red(), highlightColor.green(), highlightColor.blue(), 160);
 
     qint64 differing = 0;
     for (int y = 0; y < current.height(); ++y) {
@@ -60,7 +67,7 @@ Analysis analyze(const QImage &current, const QImage &reference, int threshold,
         const QRgb *rowReference = reinterpret_cast<const QRgb *>(reference.constScanLine(y));
         QRgb *rowMask = reinterpret_cast<QRgb *>(analysis.mask.scanLine(y));
         for (int x = 0; x < current.width(); ++x) {
-            if (excluded.contains(x, y))
+            if (excluded.contains(QPoint(x, y)))
                 continue;
             if (pixelDiffers(rowCurrent[x], rowReference[x], threshold)) {
                 ++differing;
@@ -70,8 +77,7 @@ Analysis analyze(const QImage &current, const QImage &reference, int threshold,
         }
     }
     const qint64 total =
-        static_cast<qint64>(current.width()) * current.height()
-        - static_cast<qint64>(excluded.width()) * excluded.height();
+        static_cast<qint64>(current.width()) * current.height() - regionArea(excluded);
     analysis.percent = total > 0 ? 100.0 * differing / total : 0.0;
 
     const int hotThreshold = static_cast<int>(kCellSize * kCellSize * kHotCellShare);

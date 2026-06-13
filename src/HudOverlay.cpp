@@ -16,7 +16,9 @@ constexpr double kBlinkThreshold = 2.0;
 constexpr double kNoMatchThreshold = 20.0;
 constexpr int kBlinkIntervalMs = 100;
 constexpr int kBlinkDelayMs = 1000;
-constexpr int kFontPointSize = 32;
+constexpr int kBaseFontPointSize = 32;
+constexpr int kBaseWidth = 300;
+constexpr int kBaseHeight = 96;
 
 }
 
@@ -26,7 +28,7 @@ HudOverlay::HudOverlay()
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_ShowWithoutActivating);
     setWindowFlag(Qt::WindowTransparentForInput);
-    setFixedSize(300, 96);
+    setFixedSize(kBaseWidth, kBaseHeight);
 
     blinkTimer_.setInterval(kBlinkIntervalMs);
     connect(&blinkTimer_, &QTimer::timeout, this, [this] {
@@ -55,6 +57,14 @@ void HudOverlay::showPercent(double percent, QScreen *screen) {
         show();
     }
     updateBlinkState();
+    update();
+}
+
+void HudOverlay::setScalePercent(int percent) {
+    scale_ = qBound(50, percent, 200) / 100.0;
+    setFixedSize(qRound(kBaseWidth * scale_), qRound(kBaseHeight * scale_));
+    if (isVisible())
+        configurePlacement(targetScreen_);
     update();
 }
 
@@ -119,7 +129,7 @@ void HudOverlay::paintEvent(QPaintEvent *) {
         return;
 
     QFont font = painter.font();
-    font.setPointSize(kFontPointSize);
+    font.setPointSizeF(kBaseFontPointSize * scale_);
     font.setBold(true);
     painter.setFont(font);
     painter.setPen(noMatch ? QColor(190, 190, 190) : (alert ? QColor(255, 40, 40) : Qt::white));

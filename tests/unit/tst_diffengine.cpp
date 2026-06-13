@@ -10,6 +10,7 @@ private slots:
     void changedBlockGivesExactPercent();
     void sizeMismatchGivesHundred();
     void thresholdSuppressesSmallDeltas();
+    void regionExcludesBandsFromDiff();
     void analyzeMarksChangedPixelsInMask();
     void analyzeBuildsRegionAroundChange();
     void analyzeSkipsSparseNoiseRegions();
@@ -49,6 +50,27 @@ void TestDiffEngine::thresholdSuppressesSmallDeltas() {
     const QImage shifted = solidImage({50, 50}, qRgb(120, 100, 100));
     QCOMPARE(DiffEngine::diffPercent(base, shifted, 25), 0.0);
     QCOMPARE(DiffEngine::diffPercent(base, shifted, 10), 100.0);
+}
+
+void TestDiffEngine::regionExcludesBandsFromDiff() {
+    const QImage base = solidImage({100, 100}, qRgb(50, 60, 70));
+    QImage changed = base;
+    for (int y = 0; y < 10; ++y)
+        for (int x = 0; x < 100; ++x)
+            changed.setPixel(x, y, qRgb(250, 60, 70));
+    for (int y = 90; y < 100; ++y)
+        for (int x = 0; x < 100; ++x)
+            changed.setPixel(x, y, qRgb(250, 60, 70));
+
+    QCOMPARE(DiffEngine::diffPercent(base, changed, 25), 20.0);
+
+    QRegion bothBands;
+    bothBands += QRect(0, 0, 100, 10);
+    bothBands += QRect(0, 90, 100, 10);
+    QCOMPARE(DiffEngine::diffPercent(base, changed, 25, bothBands), 0.0);
+
+    QCOMPARE(DiffEngine::diffPercent(base, changed, 25, QRegion(QRect(0, 0, 100, 10))),
+             100.0 * 1000 / 9000);
 }
 
 void TestDiffEngine::analyzeMarksChangedPixelsInMask() {

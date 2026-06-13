@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QImage>
 #include <QList>
 #include <QRect>
@@ -12,7 +13,8 @@ public:
     OverlayWindow();
 
     void showDiff(const QImage &mask, const QList<QRect> &regions, QScreen *screen,
-                  double percent, const QString &referenceName, const QString &hideHint);
+                  double percent, const QString &referenceName, const QString &hideHint,
+                  const QColor &highlightColor);
     void setHighlightVisible(bool visible);
     bool highlightVisible() const { return highlightVisible_; }
 
@@ -25,5 +27,6 @@ private:
     double percent_ = 0.0;
     QString referenceName_;
     QString hideHint_;
+    QColor highlightColor_ = QColor(255, 40, 40);
     bool highlightVisible_ = true;
 };

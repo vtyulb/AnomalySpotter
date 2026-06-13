@@ -1,8 +1,10 @@
 #pragma once
 
+#include <QColor>
 #include <QImage>
 #include <QList>
 #include <QRect>
+#include <QRegion>
 
 namespace DiffEngine {
 
@@ -13,8 +15,9 @@ struct Analysis {
 };
 
 double diffPercent(const QImage &a, const QImage &b, int threshold,
-                   const QRect &exclude = QRect());
+                   const QRegion &exclude = QRegion());
 Analysis analyze(const QImage &current, const QImage &reference, int threshold,
-                 const QRect &exclude = QRect());
+                 const QRegion &exclude = QRegion(),
+                 const QColor &highlightColor = QColor(255, 40, 40));
 
 }

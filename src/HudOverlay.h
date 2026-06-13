@@ -10,6 +10,7 @@ public:
     HudOverlay();
 
     void showPercent(double percent, QScreen *screen);
+    void setScalePercent(int percent);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -20,6 +21,7 @@ private:
     void updateBlinkState();
 
     double percent_ = 0.0;
+    double scale_ = 1.0;
     QScreen *targetScreen_ = nullptr;
     QTimer blinkTimer_;
     QTimer blinkDelayTimer_;

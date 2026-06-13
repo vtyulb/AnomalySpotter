@@ -1,0 +1,14 @@
+stages:
+  - test
+
+build-and-test:
+  stage: test
+  image: archlinux:latest
+  variables:
+    QT_QPA_PLATFORM: offscreen
+  before_script:
+    - pacman -Syu --noconfirm cmake ninja gcc qt6-base qt6-multimedia
+  script:
+    - cmake --preset release
+    - cmake --build --preset release
+    - ctest --test-dir build --output-on-failure
