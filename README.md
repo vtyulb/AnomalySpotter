@@ -21,7 +21,7 @@ Grab the Windows build from the releases, or build from source — see [build.md
 1. Pick the monitor the game runs on and click "Start capture". On Wayland the system shows a screen picker dialog — choose the same monitor.
 2. On the first launch KDE asks to allow the global F5/F6 hotkeys — confirm. Without confirmation the hotkeys work only while the trainer window is focused. On Windows the hotkeys are registered automatically.
 3. **F5** — save the current frame to memory (room reference).
-4. The table refreshes every 200 ms: difference percentage between the current screen and each reference; the best (most similar) one is shown in bold. While capture is running, a small HUD in the top-right corner of the game screen shows the difference % against the best match (toggle with the "Show difference % on screen" checkbox); the HUD corner is excluded from comparison so it never inflates its own percentage. The HUD digits are rendered at double size for readability and turn red at ≥0.5 %, then blink furiously once the difference has stayed ≥2 % for a full second. Above 20 % the whole HUD goes gray — that means no snapshot matches the current view and you probably need to take one here.
+4. The table refreshes every 200 ms: difference percentage between the current screen and each reference; the best (most similar) one is shown in bold. While capture is running, a small HUD in the top-right corner of the game screen shows the difference % against the best match (toggle with the "Show difference % on screen" checkbox); the HUD corner is excluded from comparison so it never inflates its own percentage. The HUD digits are rendered at double size for readability and turn red once the difference crosses a configurable threshold (default 0.02 %, set with "Turn HUD red at:"). Above 20 % the whole HUD goes gray — that means no snapshot matches the current view and you probably need to take one here.
 5. **F6** — shows the differences against the most similar reference as a red overlay: filled highlight plus outlined boxes for large zones. Comparison is paused while the overlay is up, so the highlight never feeds back into the capture. The "Overlay key mode" selector picks how F6 behaves:
    - **Toggle** (default) — press to show, press again to hide.
    - **Blink** — same as Toggle, but the red highlight flashes 5 times a second, alternating with the game's own pixels. The overlay window itself stays up the whole time (only its content repaints), so compositor window-open/close effects are not retriggered by the blinking.
@@ -30,6 +30,7 @@ Grab the Windows build from the releases, or build from source — see [build.md
    The "Differences" button toggles the overlay with a click in any mode. The mode handling is shared code, so Linux and Windows behave identically.
 6. Use the "Delete last" / "Delete selected" buttons to drop a snapshot taken by mistake. "Delete last" also has an optional global hotkey: it is unbound by default — on Wayland assign it in the desktop's keyboard-shortcuts settings ("Delete last snapshot" under AnomalySpotter), on Windows set `deleteLastKey` in the config.
 7. The sensitivity threshold suppresses noise from the video codec, the cursor, and small animations. "HUD size" scales the on-screen percentage indicator. "Ignore top pixels" / "Ignore bottom pixels" (0–100) drop horizontal strips at the top and bottom of the screen from the comparison, so a fixed clock, taskbar, or game UI bar there never counts as a difference. "Difference color" picks the highlight color used by the F6 overlay (red by default).
+8. **Get-up reminder** — an optional countdown (toggle it with the "Get-up reminder" checkbox; off for games that don't need it) shown only inside the app (default 27 s) that nudges you to stand up / do your real check. It starts after you take your **first snapshot** (idle until then). When it runs out it shows **! UP !** in red, and the on-screen HUD flashes red with **! UP !** over the game until you reset it. Reset it with its global hotkey (**F7** by default) or the "Reset" button, which restarts the countdown.
 
 ### Changing the hotkeys
 
@@ -42,8 +43,8 @@ because on Wayland the compositor owns the global-shortcut binding, not the app:
   center). They are listed under **AnomalySpotter**, regardless of how the app was started. The
   buttons in the window show whatever is actually bound (the compositor may pick different keys if
   F5/F6 are taken).
-- **Windows:** set `snapshotKey` / `overlayKey` / `deleteLastKey` (a function-key number,
-  1–12; `deleteLastKey` 0 = disabled, the default) in
+- **Windows:** set `snapshotKey` / `overlayKey` / `deleteLastKey` / `resetTimerKey` (a function-key
+  number, 1–12; `deleteLastKey` 0 = disabled, the default, `resetTimerKey` defaults to 7) in
   `%APPDATA%\anomaly-spotter\anomaly-spotter.ini` — the in-window **"Edit config…"** button
   opens it in your editor — and relaunch. The same keys in
   `~/.config/anomaly-spotter/anomaly-spotter.conf` apply to the X11 backend.

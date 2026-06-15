@@ -14,10 +14,12 @@
 
 class QCheckBox;
 class QComboBox;
+class QDoubleSpinBox;
 class QLabel;
 class QPushButton;
 class QShortcut;
 class QSlider;
+class QSpinBox;
 class QTableWidget;
 
 struct Snapshot {
@@ -55,6 +57,8 @@ private slots:
     void onGlobalShortcutsBound();
     void openShortcutSettings();
     void chooseHighlightColor();
+    void resetReminder();
+    void tickReminder();
     void openConfigFile();
     void pollAutomation();
 
@@ -87,6 +91,12 @@ private:
     int snapshotFKey_ = 5;
     int overlayFKey_ = 6;
     int deleteLastFKey_ = 0;
+    int resetTimerFKey_ = 7;
+    QTimer reminderTimer_;
+    double reminderRemaining_ = 27.0;
+    int reminderDuration_ = 27;
+    bool reminderExpired_ = false;
+    bool reminderStarted_ = false;
     QString overlayTriggerText_;
     QString automationControlPath_;
     QString automationStatePath_;
@@ -102,9 +112,14 @@ private:
     QSlider *thresholdSlider_ = nullptr;
     QLabel *thresholdValueLabel_ = nullptr;
     QSlider *hudSizeSlider_ = nullptr;
+    QDoubleSpinBox *redThresholdSpin_ = nullptr;
     QSlider *ignoreTopSlider_ = nullptr;
     QSlider *ignoreBottomSlider_ = nullptr;
     QPushButton *colorButton_ = nullptr;
+    QCheckBox *reminderEnableCheck_ = nullptr;
+    QLabel *reminderCountdownLabel_ = nullptr;
+    QSpinBox *reminderDurationSpin_ = nullptr;
+    QPushButton *resetTimerButton_ = nullptr;
     QTableWidget *snapshotTable_ = nullptr;
     QShortcut *localSnapshotShortcut_ = nullptr;
 };

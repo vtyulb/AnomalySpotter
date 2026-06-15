@@ -36,6 +36,7 @@ const char *kAppId = "anomaly-spotter";
 constexpr QLatin1StringView kSnapshotShortcutId("save-snapshot");
 constexpr QLatin1StringView kOverlayShortcutId("toggle-overlay");
 constexpr QLatin1StringView kDeleteLastShortcutId("delete-last");
+constexpr QLatin1StringView kResetTimerShortcutId("reset-timer");
 
 void extractTriggers(const QList<PortalShortcut> &shortcuts, QString *snapshotTrigger,
                      QString *overlayTrigger, QString *deleteLastTrigger) {
@@ -132,6 +133,12 @@ void PortalHotkeys::bindShortcuts() {
         deleteLastProperties.insert(QStringLiteral("preferred_trigger"),
                                     QStringLiteral("F%1").arg(deleteLastFKey_));
     shortcuts.append({QString(kDeleteLastShortcutId), deleteLastProperties});
+    QVariantMap resetTimerProperties{
+        {QStringLiteral("description"), QStringLiteral("Reset reminder timer")}};
+    if (resetTimerFKey_ > 0)
+        resetTimerProperties.insert(QStringLiteral("preferred_trigger"),
+                                    QStringLiteral("F%1").arg(resetTimerFKey_));
+    shortcuts.append({QString(kResetTimerShortcutId), resetTimerProperties});
 
     QDBusMessage message = QDBusMessage::createMethodCall(
         kPortalService, kPortalPath, kShortcutsInterface, QStringLiteral("BindShortcuts"));
@@ -182,6 +189,8 @@ void PortalHotkeys::onActivated(const QDBusObjectPath &sessionHandle, const QStr
         emit overlayPressed();
     else if (shortcutId == kDeleteLastShortcutId)
         emit deleteLastRequested();
+    else if (shortcutId == kResetTimerShortcutId)
+        emit resetTimerRequested();
 }
 
 void PortalHotkeys::onDeactivated(const QDBusObjectPath &sessionHandle, const QString &shortcutId,

@@ -6,6 +6,8 @@
 #include <QCloseEvent>
 #include <QColorDialog>
 #include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QSpinBox>
 #include <QDesktopServices>
 #include <QFile>
 #include <QFont>
@@ -54,11 +56,17 @@ void applyColorSwatch(QPushButton *button, const QColor &color) {
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     buildUi();
 
+    reminderTimer_.setInterval(100);
+    connect(&reminderTimer_, &QTimer::timeout, this, &MainWindow::tickReminder);
+
     QSettings settings;
     thresholdSlider_->setValue(settings.value(QStringLiteral("threshold"), 10).toInt());
     hudCheck_->setChecked(settings.value(QStringLiteral("hudEnabled"), true).toBool());
     hudSizeSlider_->setValue(qBound(50, settings.value(QStringLiteral("hudSize"), 100).toInt(), 200));
     hud_.setScalePercent(hudSizeSlider_->value());
+    redThresholdSpin_->setValue(
+        settings.value(QStringLiteral("hudRedThreshold"), 0.02).toDouble());
+    hud_.setRedThreshold(redThresholdSpin_->value());
     ignoreTopSlider_->setValue(qBound(0, settings.value(QStringLiteral("ignoreTop"), 35).toInt(), 100));
     ignoreBottomSlider_->setValue(
         qBound(0, settings.value(QStringLiteral("ignoreBottom"), 0).toInt(), 100));
@@ -79,11 +87,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     snapshotFKey_ = qBound(1, settings.value(QStringLiteral("snapshotKey"), 5).toInt(), 12);
     overlayFKey_ = qBound(1, settings.value(QStringLiteral("overlayKey"), 6).toInt(), 12);
     deleteLastFKey_ = qBound(0, settings.value(QStringLiteral("deleteLastKey"), 0).toInt(), 12);
+    resetTimerFKey_ = qBound(0, settings.value(QStringLiteral("resetTimerKey"), 7).toInt(), 12);
+    reminderDuration_ = qBound(1, settings.value(QStringLiteral("timerDuration"), 27).toInt(), 3600);
+    reminderDurationSpin_->setValue(reminderDuration_);
+    reminderEnableCheck_->setChecked(settings.value(QStringLiteral("timerEnabled"), true).toBool());
     overlayTriggerText_ = QStringLiteral("F%1").arg(overlayFKey_);
     snapshotButton_->setText(QStringLiteral("Snapshot (F%1)").arg(snapshotFKey_));
     overlayButton_->setText(QStringLiteral("Differences (%1)").arg(overlayTriggerText_));
     if (deleteLastFKey_ > 0)
         deleteLastButton_->setText(QStringLiteral("Delete last (F%1)").arg(deleteLastFKey_));
+    resetTimerButton_->setText(resetTimerFKey_ > 0
+                                   ? QStringLiteral("Reset (F%1)").arg(resetTimerFKey_)
+                                   : QStringLiteral("Reset"));
 
     compareTimer_.setInterval(kCompareIntervalMs);
     connect(&compareTimer_, &QTimer::timeout, this, &MainWindow::updateComparisons);
@@ -115,6 +130,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(hotkeys_, &GlobalHotkeys::overlayReleased, this, &MainWindow::onOverlayReleased);
     connect(hotkeys_, &GlobalHotkeys::deleteLastRequested, this,
             &MainWindow::removeLastSnapshot);
+    connect(hotkeys_, &GlobalHotkeys::resetTimerRequested, this, &MainWindow::resetReminder);
     connect(hotkeys_, &GlobalHotkeys::bound, this, &MainWindow::onGlobalShortcutsBound);
     connect(hotkeys_, &GlobalHotkeys::triggersChanged, this,
             [this](const QString &snapshotTrigger, const QString &overlayTrigger,
@@ -136,7 +152,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         statusBar()->showMessage(status, 5000);
     });
 
-    hotkeys_->setFunctionKeys(snapshotFKey_, overlayFKey_, deleteLastFKey_);
+    hotkeys_->setFunctionKeys(snapshotFKey_, overlayFKey_, deleteLastFKey_, resetTimerFKey_);
+    resetReminder();
 
     automationControlPath_ = qEnvironmentVariable("AS_CONTROL_FILE");
     localSnapshotShortcut_ = new QShortcut(
@@ -163,6 +180,11 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     if (!globalHotkeysBound_ && deleteLastFKey_ > 0
         && event->key() == Qt::Key_F1 + deleteLastFKey_ - 1 && !event->isAutoRepeat()) {
         removeLastSnapshot();
+        return;
+    }
+    if (!globalHotkeysBound_ && resetTimerFKey_ > 0
+        && event->key() == Qt::Key_F1 + resetTimerFKey_ - 1 && !event->isAutoRepeat()) {
+        resetReminder();
         return;
     }
     QMainWindow::keyPressEvent(event);
@@ -239,6 +261,19 @@ void MainWindow::buildUi() {
     hudSizeRow->addWidget(hudSizeValueLabel);
     layout->addLayout(hudSizeRow);
 
+    auto *redThresholdRow = new QHBoxLayout;
+    redThresholdRow->addWidget(new QLabel(QStringLiteral("Turn HUD red at:"), central));
+    redThresholdSpin_ = new QDoubleSpinBox(central);
+    redThresholdSpin_->setRange(0.0, 100.0);
+    redThresholdSpin_->setDecimals(2);
+    redThresholdSpin_->setSingleStep(0.01);
+    redThresholdSpin_->setSuffix(QStringLiteral(" %"));
+    redThresholdSpin_->setValue(0.02);
+    connect(redThresholdSpin_, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
+            [this](double value) { hud_.setRedThreshold(value); });
+    redThresholdRow->addWidget(redThresholdSpin_, 1);
+    layout->addLayout(redThresholdRow);
+
     auto addIgnoreBandRow = [this, central, layout](const QString &label, QSlider *&slider) {
         auto *row = new QHBoxLayout;
         row->addWidget(new QLabel(label, central));
@@ -261,6 +296,47 @@ void MainWindow::buildUi() {
     connect(colorButton_, &QPushButton::clicked, this, &MainWindow::chooseHighlightColor);
     colorRow->addWidget(colorButton_, 1);
     layout->addLayout(colorRow);
+
+    auto *reminderRow = new QHBoxLayout;
+    reminderEnableCheck_ = new QCheckBox(QStringLiteral("Get-up reminder, every"), central);
+    reminderEnableCheck_->setChecked(true);
+    reminderRow->addWidget(reminderEnableCheck_);
+
+    reminderDurationSpin_ = new QSpinBox(central);
+    reminderDurationSpin_->setRange(1, 3600);
+    reminderDurationSpin_->setSuffix(QStringLiteral(" s"));
+    reminderDurationSpin_->setValue(27);
+    connect(reminderDurationSpin_, qOverload<int>(&QSpinBox::valueChanged), this,
+            [this](int value) {
+                reminderDuration_ = value;
+                resetReminder();
+            });
+    reminderRow->addWidget(reminderDurationSpin_);
+
+    reminderRow->addStretch(1);
+    reminderCountdownLabel_ = new QLabel(QStringLiteral("27 s"), central);
+    reminderRow->addWidget(reminderCountdownLabel_);
+    resetTimerButton_ = new QPushButton(QStringLiteral("Reset"), central);
+    connect(resetTimerButton_, &QPushButton::clicked, this, &MainWindow::resetReminder);
+    reminderRow->addWidget(resetTimerButton_);
+    layout->addLayout(reminderRow);
+
+    connect(reminderEnableCheck_, &QCheckBox::toggled, this, [this](bool on) {
+        reminderDurationSpin_->setEnabled(on);
+        resetTimerButton_->setEnabled(on);
+        reminderCountdownLabel_->setEnabled(on);
+        reminderExpired_ = false;
+        reminderTimer_.stop();
+        hud_.setAlarmBlinking(false);
+        if (on) {
+            reminderStarted_ = !snapshots_.isEmpty();
+            resetReminder();
+        } else {
+            reminderStarted_ = false;
+            reminderCountdownLabel_->setStyleSheet(QStringLiteral("color: gray;"));
+            reminderCountdownLabel_->setText(QStringLiteral("off"));
+        }
+    });
 
     auto *overlayModeRow = new QHBoxLayout;
     overlayModeRow->addWidget(new QLabel(QStringLiteral("Overlay key mode:"), central));
@@ -288,8 +364,8 @@ void MainWindow::buildUi() {
         hotkeyButtonRow->addWidget(shortcutsButton);
     } else {
         hotkeyHint->setText(QStringLiteral(
-            "Change the hotkeys via snapshotKey/overlayKey/deleteLastKey (F-number) in the "
-            "config file."));
+            "Change the hotkeys via snapshotKey/overlayKey/deleteLastKey/resetTimerKey "
+            "(F-number) in the config file."));
         auto *configButton = new QPushButton(QStringLiteral("Edit config…"), central);
         connect(configButton, &QPushButton::clicked, this, &MainWindow::openConfigFile);
         hotkeyButtonRow->addWidget(configButton);
@@ -500,6 +576,11 @@ void MainWindow::saveSnapshot() {
                                                  snapshot.name));
     snapshotTable_->setItem(row, 1, new QTableWidgetItem(QStringLiteral("—")));
     statusBar()->showMessage(snapshot.name + QStringLiteral(" saved to memory"), 3000);
+
+    if (reminderEnableCheck_->isChecked() && !reminderStarted_) {
+        reminderStarted_ = true;
+        resetReminder();
+    }
 }
 
 void MainWindow::showOverlay() {
@@ -591,6 +672,11 @@ void MainWindow::removeSnapshotAt(int row) {
     lastPercents_.clear();
     bestIndex_ = -1;
     statusBar()->showMessage(name + QStringLiteral(" deleted"), 3000);
+
+    if (snapshots_.isEmpty() && reminderStarted_) {
+        reminderStarted_ = false;
+        resetReminder();
+    }
 }
 
 void MainWindow::removeSelectedSnapshot() {
@@ -611,9 +697,12 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     settings.setValue(QStringLiteral("screenIndex"), screenBox_->currentIndex());
     settings.setValue(QStringLiteral("hudEnabled"), hudCheck_->isChecked());
     settings.setValue(QStringLiteral("hudSize"), hudSizeSlider_->value());
+    settings.setValue(QStringLiteral("hudRedThreshold"), redThresholdSpin_->value());
     settings.setValue(QStringLiteral("ignoreTop"), ignoreTopSlider_->value());
     settings.setValue(QStringLiteral("ignoreBottom"), ignoreBottomSlider_->value());
     settings.setValue(QStringLiteral("highlightColor"), highlightColor_.name());
+    settings.setValue(QStringLiteral("timerDuration"), reminderDuration_);
+    settings.setValue(QStringLiteral("timerEnabled"), reminderEnableCheck_->isChecked());
     settings.setValue(QStringLiteral("overlayMode"), overlayModeBox_->currentIndex());
     settings.setValue(QStringLiteral("geometry"), saveGeometry());
     overlay_.close();
@@ -657,11 +746,46 @@ void MainWindow::chooseHighlightColor() {
     applyColorSwatch(colorButton_, highlightColor_);
 }
 
+void MainWindow::resetReminder() {
+    if (!reminderEnableCheck_->isChecked())
+        return;
+    reminderRemaining_ = reminderDuration_;
+    reminderExpired_ = false;
+    hud_.setAlarmBlinking(false);
+    if (reminderStarted_) {
+        reminderCountdownLabel_->setStyleSheet(QString());
+        reminderCountdownLabel_->setText(QStringLiteral("%1 s").arg(reminderDuration_));
+        if (!reminderTimer_.isActive())
+            reminderTimer_.start();
+    } else {
+        reminderTimer_.stop();
+        reminderCountdownLabel_->setStyleSheet(QStringLiteral("color: gray;"));
+        reminderCountdownLabel_->setText(QStringLiteral("%1 s (after 1st snapshot)").arg(reminderDuration_));
+    }
+}
+
+void MainWindow::tickReminder() {
+    if (reminderExpired_)
+        return;
+    reminderRemaining_ -= reminderTimer_.interval() / 1000.0;
+    if (reminderRemaining_ <= 0.0) {
+        reminderRemaining_ = 0.0;
+        reminderExpired_ = true;
+        reminderCountdownLabel_->setStyleSheet(
+            QStringLiteral("color: #ff2828; font-weight: bold;"));
+        reminderCountdownLabel_->setText(QStringLiteral("! UP !"));
+        hud_.setAlarmBlinking(true);
+        return;
+    }
+    reminderCountdownLabel_->setText(QStringLiteral("%1 s").arg(qCeil(reminderRemaining_)));
+}
+
 void MainWindow::openConfigFile() {
     QSettings settings;
     settings.setValue(QStringLiteral("snapshotKey"), snapshotFKey_);
     settings.setValue(QStringLiteral("overlayKey"), overlayFKey_);
     settings.setValue(QStringLiteral("deleteLastKey"), deleteLastFKey_);
+    settings.setValue(QStringLiteral("resetTimerKey"), resetTimerFKey_);
     settings.sync();
     QDesktopServices::openUrl(QUrl::fromLocalFile(settings.fileName()));
     statusBar()->showMessage(QStringLiteral("Restart the app after editing the config"), 5000);

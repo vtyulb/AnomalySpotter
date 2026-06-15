@@ -16,4 +16,5 @@ private:
     quint32 snapshotKeycode_ = 0;
     quint32 overlayKeycode_ = 0;
     quint32 deleteLastKeycode_ = 0;
+    quint32 resetTimerKeycode_ = 0;
 };

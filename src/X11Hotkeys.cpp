@@ -23,6 +23,8 @@ void X11Hotkeys::start() {
     overlayKeycode_ = XKeysymToKeycode(x11->display(), XK_F1 + (overlayFKey_ - 1));
     if (deleteLastFKey_ > 0)
         deleteLastKeycode_ = XKeysymToKeycode(x11->display(), XK_F1 + (deleteLastFKey_ - 1));
+    if (resetTimerFKey_ > 0)
+        resetTimerKeycode_ = XKeysymToKeycode(x11->display(), XK_F1 + (resetTimerFKey_ - 1));
     if (!snapshotKeycode_ || !overlayKeycode_) {
         emit statusChanged(QStringLiteral(
             "Could not resolve F%1/F%2 keycodes, they work only inside the trainer window")
@@ -42,6 +44,9 @@ void X11Hotkeys::start() {
                  XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
     if (deleteLastKeycode_)
         xcb_grab_key(connection, 1, screen->root, XCB_MOD_MASK_ANY, deleteLastKeycode_,
+                     XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
+    if (resetTimerKeycode_)
+        xcb_grab_key(connection, 1, screen->root, XCB_MOD_MASK_ANY, resetTimerKeycode_,
                      XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
     xcb_flush(connection);
 
@@ -65,6 +70,8 @@ bool X11Hotkeys::nativeEventFilter(const QByteArray &eventType, void *message, q
             emit overlayPressed();
         else if (deleteLastKeycode_ && keyEvent->detail == deleteLastKeycode_)
             emit deleteLastRequested();
+        else if (resetTimerKeycode_ && keyEvent->detail == resetTimerKeycode_)
+            emit resetTimerRequested();
     } else if (type == XCB_KEY_RELEASE) {
         const auto *keyEvent = reinterpret_cast<xcb_key_release_event_t *>(event);
         if (keyEvent->detail == overlayKeycode_)

@@ -10,7 +10,9 @@ LRESULT CALLBACK lowLevelKeyboardProc(int code, WPARAM wParam, LPARAM lParam) {
         if (static_cast<int>(event->vkCode) == g_instance->snapshotVk()
             || static_cast<int>(event->vkCode) == g_instance->overlayVk()
             || (g_instance->deleteLastVk()
-                && static_cast<int>(event->vkCode) == g_instance->deleteLastVk())) {
+                && static_cast<int>(event->vkCode) == g_instance->deleteLastVk())
+            || (g_instance->resetTimerVk()
+                && static_cast<int>(event->vkCode) == g_instance->resetTimerVk())) {
             const bool down = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
             const bool up = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
             if (down || up) {
@@ -71,6 +73,13 @@ void WindowsHotkeys::handleKey(unsigned int virtualKey, bool down) {
             emit deleteLastRequested();
         } else if (!down) {
             deleteLastDown_ = false;
+        }
+    } else if (resetTimerVk() && static_cast<int>(virtualKey) == resetTimerVk()) {
+        if (down && !resetTimerDown_) {
+            resetTimerDown_ = true;
+            emit resetTimerRequested();
+        } else if (!down) {
+            resetTimerDown_ = false;
         }
     }
 }
