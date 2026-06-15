@@ -27,7 +27,7 @@ signals:
     void resetTimerRequested();
     void bound();
     void triggersChanged(const QString &snapshotTrigger, const QString &overlayTrigger,
-                         const QString &deleteLastTrigger);
+                         const QString &deleteLastTrigger, const QString &resetTimerTrigger);
     void statusChanged(const QString &status);
 
 protected:

@@ -64,6 +64,7 @@ private slots:
 
 private:
     void buildUi();
+    void showReminderIdle();
     QScreen *selectedScreen() const;
     int bestMatchIndex(const QImage &compareScaled, const QSize &frameSize,
                        double *bestPercent) const;

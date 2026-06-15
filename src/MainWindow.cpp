@@ -134,7 +134,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(hotkeys_, &GlobalHotkeys::bound, this, &MainWindow::onGlobalShortcutsBound);
     connect(hotkeys_, &GlobalHotkeys::triggersChanged, this,
             [this](const QString &snapshotTrigger, const QString &overlayTrigger,
-                   const QString &deleteLastTrigger) {
+                   const QString &deleteLastTrigger, const QString &resetTimerTrigger) {
                 if (!snapshotTrigger.isEmpty())
                     snapshotButton_->setText(
                         QStringLiteral("Snapshot (%1)").arg(snapshotTrigger));
@@ -147,13 +147,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
                     deleteLastTrigger.isEmpty()
                         ? QStringLiteral("Delete last")
                         : QStringLiteral("Delete last (%1)").arg(deleteLastTrigger));
+                resetTimerButton_->setText(
+                    resetTimerTrigger.isEmpty()
+                        ? QStringLiteral("Reset")
+                        : QStringLiteral("Reset (%1)").arg(resetTimerTrigger));
             });
     connect(hotkeys_, &GlobalHotkeys::statusChanged, this, [this](const QString &status) {
         statusBar()->showMessage(status, 5000);
     });
 
     hotkeys_->setFunctionKeys(snapshotFKey_, overlayFKey_, deleteLastFKey_, resetTimerFKey_);
-    resetReminder();
+    if (reminderEnableCheck_->isChecked())
+        showReminderIdle();
 
     automationControlPath_ = qEnvironmentVariable("AS_CONTROL_FILE");
     localSnapshotShortcut_ = new QShortcut(
@@ -309,7 +314,10 @@ void MainWindow::buildUi() {
     connect(reminderDurationSpin_, qOverload<int>(&QSpinBox::valueChanged), this,
             [this](int value) {
                 reminderDuration_ = value;
-                resetReminder();
+                if (reminderStarted_)
+                    resetReminder();
+                else if (reminderEnableCheck_->isChecked())
+                    showReminderIdle();
             });
     reminderRow->addWidget(reminderDurationSpin_);
 
@@ -325,14 +333,13 @@ void MainWindow::buildUi() {
         reminderDurationSpin_->setEnabled(on);
         resetTimerButton_->setEnabled(on);
         reminderCountdownLabel_->setEnabled(on);
-        reminderExpired_ = false;
-        reminderTimer_.stop();
-        hud_.setAlarmBlinking(false);
         if (on) {
-            reminderStarted_ = !snapshots_.isEmpty();
-            resetReminder();
+            showReminderIdle();
         } else {
             reminderStarted_ = false;
+            reminderExpired_ = false;
+            reminderTimer_.stop();
+            hud_.setAlarmBlinking(false);
             reminderCountdownLabel_->setStyleSheet(QStringLiteral("color: gray;"));
             reminderCountdownLabel_->setText(QStringLiteral("off"));
         }
@@ -576,11 +583,6 @@ void MainWindow::saveSnapshot() {
                                                  snapshot.name));
     snapshotTable_->setItem(row, 1, new QTableWidgetItem(QStringLiteral("—")));
     statusBar()->showMessage(snapshot.name + QStringLiteral(" saved to memory"), 3000);
-
-    if (reminderEnableCheck_->isChecked() && !reminderStarted_) {
-        reminderStarted_ = true;
-        resetReminder();
-    }
 }
 
 void MainWindow::showOverlay() {
@@ -672,11 +674,6 @@ void MainWindow::removeSnapshotAt(int row) {
     lastPercents_.clear();
     bestIndex_ = -1;
     statusBar()->showMessage(name + QStringLiteral(" deleted"), 3000);
-
-    if (snapshots_.isEmpty() && reminderStarted_) {
-        reminderStarted_ = false;
-        resetReminder();
-    }
 }
 
 void MainWindow::removeSelectedSnapshot() {
@@ -746,22 +743,26 @@ void MainWindow::chooseHighlightColor() {
     applyColorSwatch(colorButton_, highlightColor_);
 }
 
+void MainWindow::showReminderIdle() {
+    reminderStarted_ = false;
+    reminderExpired_ = false;
+    reminderTimer_.stop();
+    hud_.setAlarmBlinking(false);
+    reminderCountdownLabel_->setStyleSheet(QStringLiteral("color: gray;"));
+    reminderCountdownLabel_->setText(QStringLiteral("%1 s · Reset to start").arg(reminderDuration_));
+}
+
 void MainWindow::resetReminder() {
     if (!reminderEnableCheck_->isChecked())
         return;
+    reminderStarted_ = true;
     reminderRemaining_ = reminderDuration_;
     reminderExpired_ = false;
     hud_.setAlarmBlinking(false);
-    if (reminderStarted_) {
-        reminderCountdownLabel_->setStyleSheet(QString());
-        reminderCountdownLabel_->setText(QStringLiteral("%1 s").arg(reminderDuration_));
-        if (!reminderTimer_.isActive())
-            reminderTimer_.start();
-    } else {
-        reminderTimer_.stop();
-        reminderCountdownLabel_->setStyleSheet(QStringLiteral("color: gray;"));
-        reminderCountdownLabel_->setText(QStringLiteral("%1 s (after 1st snapshot)").arg(reminderDuration_));
-    }
+    reminderCountdownLabel_->setStyleSheet(QString());
+    reminderCountdownLabel_->setText(QStringLiteral("%1 s").arg(reminderDuration_));
+    if (!reminderTimer_.isActive())
+        reminderTimer_.start();
 }
 
 void MainWindow::tickReminder() {

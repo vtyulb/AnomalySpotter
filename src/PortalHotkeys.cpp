@@ -39,7 +39,8 @@ constexpr QLatin1StringView kDeleteLastShortcutId("delete-last");
 constexpr QLatin1StringView kResetTimerShortcutId("reset-timer");
 
 void extractTriggers(const QList<PortalShortcut> &shortcuts, QString *snapshotTrigger,
-                     QString *overlayTrigger, QString *deleteLastTrigger) {
+                     QString *overlayTrigger, QString *deleteLastTrigger,
+                     QString *resetTimerTrigger) {
     for (const PortalShortcut &shortcut : shortcuts) {
         const QString trigger =
             shortcut.properties.value(QStringLiteral("trigger_description")).toString();
@@ -49,6 +50,8 @@ void extractTriggers(const QList<PortalShortcut> &shortcuts, QString *snapshotTr
             *overlayTrigger = trigger;
         else if (shortcut.id == kDeleteLastShortcutId)
             *deleteLastTrigger = trigger;
+        else if (shortcut.id == kResetTimerShortcutId)
+            *resetTimerTrigger = trigger;
     }
 }
 
@@ -155,13 +158,13 @@ void PortalHotkeys::onBindResponse(uint code, const QVariantMap &results) {
     }
     emit bound();
 
-    QString snapshotTrigger, overlayTrigger, deleteLastTrigger;
+    QString snapshotTrigger, overlayTrigger, deleteLastTrigger, resetTimerTrigger;
     const QVariant raw = results.value(QStringLiteral("shortcuts"));
     if (raw.canConvert<QDBusArgument>())
         extractTriggers(qdbus_cast<QList<PortalShortcut>>(raw.value<QDBusArgument>()),
-                        &snapshotTrigger, &overlayTrigger, &deleteLastTrigger);
+                        &snapshotTrigger, &overlayTrigger, &deleteLastTrigger, &resetTimerTrigger);
     if (!snapshotTrigger.isEmpty() || !overlayTrigger.isEmpty())
-        emit triggersChanged(snapshotTrigger, overlayTrigger, deleteLastTrigger);
+        emit triggersChanged(snapshotTrigger, overlayTrigger, deleteLastTrigger, resetTimerTrigger);
     emit statusChanged(QStringLiteral("Global hotkeys active"));
 }
 
@@ -170,13 +173,13 @@ void PortalHotkeys::onShortcutsChanged(const QDBusMessage &message) {
     if (arguments.size() < 2
         || arguments.at(0).value<QDBusObjectPath>() != sessionHandle_)
         return;
-    QString snapshotTrigger, overlayTrigger, deleteLastTrigger;
+    QString snapshotTrigger, overlayTrigger, deleteLastTrigger, resetTimerTrigger;
     const QVariant raw = arguments.at(1);
     if (raw.canConvert<QDBusArgument>())
         extractTriggers(qdbus_cast<QList<PortalShortcut>>(raw.value<QDBusArgument>()),
-                        &snapshotTrigger, &overlayTrigger, &deleteLastTrigger);
+                        &snapshotTrigger, &overlayTrigger, &deleteLastTrigger, &resetTimerTrigger);
     if (!snapshotTrigger.isEmpty() || !overlayTrigger.isEmpty())
-        emit triggersChanged(snapshotTrigger, overlayTrigger, deleteLastTrigger);
+        emit triggersChanged(snapshotTrigger, overlayTrigger, deleteLastTrigger, resetTimerTrigger);
 }
 
 void PortalHotkeys::onActivated(const QDBusObjectPath &sessionHandle, const QString &shortcutId,
